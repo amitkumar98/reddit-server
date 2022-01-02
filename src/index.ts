@@ -12,54 +12,63 @@ import redis from "redis";
 import session from "express-session";
 import connectRedis from "connect-redis";
 import { MyContext } from "./types";
+import cors from "cors";
 
-const main = async () => {  
-    // connect to database
-    const orm = await MikroORM.init(microConfig);
-    // run migrations
-    await orm.getMigrator().up();
-    
-    const app = express();
+const main = async () => {
+  // connect to database
+  const orm = await MikroORM.init(microConfig);
+  // run migrations
+  await orm.getMigrator().up();
 
-    const RedisStore = connectRedis(session);
-    const redisClient = redis.createClient();
+  const app = express();
 
-    app.use(
-        session({
-            name: "qid",
-            store: new RedisStore({ 
-                client: redisClient as any,
-                disableTouch: true
-            }),
-            cookie: {
-                maxAge: 1000 * 60 * 60 * 24 * 365 * 10,
-                httpOnly: true,
-                sameSite: "lax", // csrf
-                secure: __prod__,
-            },
-            saveUninitialized: false,
-            secret: 'jbjhiuhbvihbipbhipdfhipd',
-            resave: false,
-        })
-    )
+  const RedisStore = connectRedis(session);
+  const redisClient = redis.createClient();
 
-    const apolloServer = new ApolloServer({
-        schema: await buildSchema({
-            resolvers: [UserResolver, PostResolver],
-            validate: false
-        }),
-        context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
-        plugins: [
-            ApolloServerPluginLandingPageGraphQLPlayground(),
-        ]
-    });
+  app.use(
+    cors({
+      origin: "http://localhost:3000",
+      credentials: true,
+    })
+  );
 
-    await apolloServer.start();
-    apolloServer.applyMiddleware({ app });
+  app.use(
+    session({
+      name: "qid",
+      store: new RedisStore({
+        client: redisClient as any,
+        disableTouch: true,
+      }),
+      cookie: {
+        maxAge: 1000 * 60 * 60 * 24 * 365 * 10,
+        httpOnly: true,
+        sameSite: "lax", // csrf
+        secure: __prod__,
+      },
+      saveUninitialized: false,
+      secret: "jbjhiuhbvihbipbhipdfhipd",
+      resave: false,
+    })
+  );
 
-    app.listen(4000, () => {
-        console.log('reddit-server listening on port 4000'); 
-    });
-}
+  const apolloServer = new ApolloServer({
+    schema: await buildSchema({
+      resolvers: [UserResolver, PostResolver],
+      validate: false,
+    }),
+    context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
+    plugins: [ApolloServerPluginLandingPageGraphQLPlayground()],
+  });
 
-main().catch(err => console.log(err));
+  await apolloServer.start();
+  apolloServer.applyMiddleware({
+    app,
+    cors: false,
+  });
+
+  app.listen(4000, () => {
+    console.log("reddit-server listening on port 4000");
+  });
+};
+
+main().catch((err) => console.log(err));
